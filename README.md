@@ -14,7 +14,7 @@ This repository contains the supplemental requirements for application and workl
 
 The following pages define the additional requirements on supporting the Helm deployment technology:
 
-- [Helm Profile Characteristics](./specification//margo-management-interface/helm-profile-characteristics.md)
+- [Helm Profile Characteristics](./specification/margo-management-interface/helm-profile-characteristics.md)
 - [Application Description Supplemental Material](./specification/applications/application-description.md)
 - [Workload Target Requirements Supplemental Material](./specification/margo-workload-targets/workload-target-requirements.md)
 - [Collecting Workload Observability Data Supplemental Material](./specification/observability/collecting-workload-observability-data.md)
