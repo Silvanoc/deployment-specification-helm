@@ -19,6 +19,60 @@ The following pages define the additional requirements on supporting the Helm de
 - [Workload Target Requirements Supplemental Material](./specification/margo-workload-targets/workload-target-requirements.md)
 - [Collecting Workload Observability Data Supplemental Material](./specification/observability/collecting-workload-observability-data.md)
 
+## Data models and generated documentation
+
+The LinkML schemas in [`model/`](./model/) describe Application Descriptions
+and Helm profile characteristics. The Application Description model uses the
+shared specification as a reference, with Helm-specific rules applied here.
+See [Compatibility issues and inconsistencies](./COMPATIBILITY-ISSUES.md) for
+the differences and remaining questions.
+
+Common Application Description definitions are imported from the core
+specification's `application-description.linkml.yaml` via the raw GitHub URL
+on the `externalize-component-specs` branch. Generation and validation require
+that URL to be reachable. The import follows a moving branch and
+is therefore not version-pinned. Generation and validation fetch the remote
+schema independently, and it can change between checks. Numeric-source
+verification therefore cannot guarantee consistency with the schema consumed
+by LinkML until the dependency is immutable or snapshotted.
+
+With [uv](https://docs.astral.sh/uv/) installed, validate the examples and
+generate and check the Markdown and JSON Schemas with:
+
+```bash
+uv sync --locked
+uv run --locked python tools/check_examples.py
+uv run --locked python tools/generate.py --check
+```
+
+Run the workflow tests with `uv run --locked python -m unittest discover -s tests -v`.
+An optional [`justfile`](./justfile) provides shortcuts for these commands.
+
+Generated pages are written to `build/site/specification/` and checked against
+the corresponding source pages; generated JSON Schemas are in
+`build/artifacts/json-schemas/`. The `build/` directory contains disposable
+generated output. The Markdown sources in `content/` use Jinja templates in
+`tools/templates/` to render model structures. The profile template iterates
+over the model's characteristic classes, and the JSON and YAML examples are
+inserted from validated fixture files.
+
+Fixtures are discovered under `model/examples/<model>/valid/` and
+`model/examples/<model>/invalid/`. Name each file `<ClassName>-<name>.yaml`
+or `<ClassName>-<name>.json` so the checker can select its LinkML class.
+
+To validate another document, select its schema and target class:
+
+```bash
+uv run --locked python tools/validate.py --schema model/helm-application.linkml.yaml --target-class ApplicationDescription path/to/application.yaml
+```
+
+The validation script preserves parsed empty objects and numeric values and
+checks additional rules carried in `x-margo-*` metadata. Ordinary JSON Schema
+validators may ignore that metadata. Optional typed Application Description
+fields may be omitted, but an explicitly supplied `null` is rejected.
+Structural validation does not replace the normative prose or verify Helm
+chart contents, Kubernetes deployment behavior or registry availability.
+
 ## Special Constraints
 
 The Helm deployment technology specification supports workload deployments as Helm charts using either Helm [version 3](https://helm.sh/docs/v3/topics/charts) or [version 4](https://helm.sh/docs/topics/charts) using Chart APIVersion v2 only.

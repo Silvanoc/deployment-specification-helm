@@ -117,7 +117,7 @@ Key: `margo.org/peripherals`
     "properties": {
         "peripherals": [{
             "type": "gpu",
-            "manufacturer": "NVIDIA",
+            "manufacturer": "NVIDIA"
         },{
             "type": "microphone"
         }]
@@ -144,7 +144,7 @@ Key: `margo.org/interfaces`
     "key": "margo.org/interfaces",
     "properties": {
         "interfaces": [{
-            "type": "ethernet",
+            "type": "ethernet"
         },{
             "type": "wifi"
         }]

@@ -1,0 +1,10 @@
+{
+    "key": "margo.org/interfaces",
+    "properties": {
+        "interfaces": [{
+            "type": "ethernet"
+        },{
+            "type": "wifi"
+        }]
+    }
+}

@@ -1,0 +1,7 @@
+{{ '#' }} {{ element.name }}
+
+| {{ 'Field' }} | {{ 'Type' }} | {{ 'Required' }} | {{ 'Description' }} |
+| --- | --- | --- | --- |
+{% for slot in schemaview.class_induced_slots(element.name) -%}
+| {{ slot.name }} | {{ "enum" if schemaview.get_enum(slot.range) else "number" if slot.range in ["float", "double", "integer", "decimal"] else slot.range }} | {{ "Y" if slot.required else "N" }} | {{ slot.description }} |
+{% endfor %}

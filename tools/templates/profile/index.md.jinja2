@@ -1,0 +1,22 @@
+{%- macro profile_group(group) -%}
+{{ require_group(group) }}
+{%- for cls in schemaview.all_classes().values() | selectattr('annotations.margo_profile_kind', 'defined') | sort(attribute='rank') if cls.annotations['margo_profile_kind'].value == group -%}
+{%- set characteristic = cls.annotations['margo_profile_characteristic'].value -%}
+{%- set label = cls.annotations['margo_profile_label'].value if group == 'deployment' else cls.title -%}
+{{ ('## ' if group == 'deployment' else '### ') ~ cls.title ~ '\n\n' }}
+{%- if cls.description %}{{ cls.description ~ '\n\n' }}{% endif -%}
+{{ 'Key: `' ~ schemaview.induced_slot('key', characteristic).equals_string ~ '`\n\n' -}}
+{{ ('### ' if group == 'deployment' else '#### ') ~ label ~ ' Properties Attributes\n\n' }}
+{%- if group == 'deployment' -%}
+{{ '> **Note:** ' ~ cls.annotations['margo_profile_note'].value ~ '\n\n' }}
+{%- else -%}
+{{ '| Field      | Type            | Required?       | Description     |\n|------------|-----------------|-----------------|-----------------|\n' }}
+{%- for slot in schemaview.class_induced_slots(cls.name) -%}
+{{ '| ' ~ slot.name ~ ' | ' ~ ('enum' if schemaview.get_enum(slot.range) else 'number' if slot.range in ['float', 'double', 'integer', 'decimal'] else slot.range) ~ ' | ' ~ ('Y' if slot.required else 'N') ~ ' | ' ~ slot.description ~ ' |\n' }}
+{%- endfor -%}
+{{ '\n' }}
+{%- endif -%}
+{{ ('### ' if group == 'deployment' else '#### ') ~ label ~ ' Example\n\n```json\n' ~ example(cls.annotations['margo_profile_example'].value) ~ '\n```' }}
+{%- if not loop.last %}{{ '\n\n' }}{% endif -%}
+{%- endfor -%}
+{%- endmacro -%}

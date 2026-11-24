@@ -1,0 +1,11 @@
+{
+    "key": "margo.org/peripherals",
+    "properties": {
+        "peripherals": [{
+            "type": "gpu",
+            "manufacturer": "NVIDIA"
+        },{
+            "type": "microphone"
+        }]
+    }
+}

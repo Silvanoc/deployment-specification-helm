@@ -1,0 +1,10 @@
+{
+  "key": "margo.org/peripherals",
+  "properties": {
+    "peripherals": [
+      {
+        "type": "invalid"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "key": "margo.org/resource/cpu",
+  "properties": {
+    "cpus": [
+      {
+        "cores": 1,
+        "architecture": "invalid"
+      }
+    ]
+  }
+}
