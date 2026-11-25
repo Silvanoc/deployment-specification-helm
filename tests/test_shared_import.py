@@ -1,4 +1,6 @@
 import io
+import json
+import re
 import sys
 import tempfile
 import unittest
@@ -56,6 +58,29 @@ class SharedImportTests(unittest.TestCase):
         shared = next(schema for schema in view.schema_map.values() if 'CpuCharacteristic' in schema.classes)
         self.assertIs(view.get_class('CpuCharacteristic'), shared.classes['CpuCharacteristic'])
         self.assertEqual(view.get_class('HelmOtherCharacteristic').is_a, 'OtherCharacteristic')
+
+    def test_profile_inherits_shared_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        view = SchemaView(str(root / 'model/helm-profile.linkml.yaml'))
+        profile = view.get_class('HelmProfile')
+        self.assertTrue(profile.tree_root)
+        self.assertEqual(profile.is_a, 'WorkloadTargetProfile')
+        self.assertIn('WorkloadTargetProfile', view.class_ancestors('HelmProfile'))
+        self.assertTrue(view.get_class('WorkloadTargetProfile').annotations['margo_extensions_pattern'].value)
+        common = view.induced_slot('characteristics', 'WorkloadTargetProfile')
+        slot = view.induced_slot('characteristics', 'HelmProfile')
+        self.assertEqual(common.annotations['margo_unique_by'].value, 'key')
+        self.assertEqual((slot.required, slot.multivalued, slot.inlined, slot.inlined_as_list), (True, True, True, True))
+        self.assertEqual([x.range for x in slot.any_of], ['HelmDeploymentCharacteristic', 'CpuCharacteristic',
+            'MemoryCharacteristic', 'StorageCharacteristic', 'PeripheralsCharacteristic',
+            'InterfacesCharacteristic', 'HelmOtherCharacteristic'])
+        self.assertEqual(set(json.loads(slot.annotations['margo_required_characteristics'].value)), {
+            'margo.org/deployment/helm', 'margo.org/resource/cpu', 'margo.org/resource/memory',
+            'margo.org/resource/storage', 'margo.org/peripherals', 'margo.org/interfaces'})
+        pattern = view.induced_slot('key', 'HelmOtherCharacteristic').pattern
+        for key in ('vendor.example/feature', 'margo.org/deployment/compose', 'margo.org/deployment/helm-v2'):
+            self.assertIsNotNone(re.search(pattern, key))
+        self.assertIsNone(re.search(pattern, 'margo.org/deployment/helm'))
 
     def test_imported_class_keeps_original_namespace(self):
         root = Path(__file__).resolve().parents[1]

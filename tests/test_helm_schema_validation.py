@@ -156,6 +156,14 @@ class SchemaValidationTests(unittest.TestCase):
         data['characteristics'].extend([{'key': 'vendor.example/unknown', 'properties': {}}, {'key': 'vendor.example/unknown', 'properties': {'different': 1}}])
         self.assertTrue(any('duplicate key' in e for e in self.validate(self.profile_schema, 'HelmProfile', data)[0]))
 
+    def test_profile_unknown_and_invalid_known_characteristics(self):
+        data = copy.deepcopy(self.profile)
+        data['characteristics'].append({'key': 'vendor.example/feature', 'properties': {'novel': True}, 'extra': 1})
+        self.assertEqual(self.validate(self.profile_schema, 'HelmProfile', data)[0], [])
+        data['characteristics'] = [c for c in data['characteristics'] if c['key'] != 'margo.org/resource/cpu']
+        data['characteristics'].append({'key': 'margo.org/resource/cpu', 'properties': {'cpus': [{'cores': 'invalid'}]}})
+        self.assertTrue(self.validate(self.profile_schema, 'HelmProfile', data)[0])
+
     def test_unique_keys_string_fast_path_and_generic_values(self):
         schema = {'type': 'array', 'x-margo-unique-by': 'key'}
         data = [{'key': f'vendor.example/{i}'} for i in range(5000)]
@@ -172,7 +180,7 @@ class SchemaValidationTests(unittest.TestCase):
             data[key] = value
             self.assertEqual(not self.validate(self.profile_schema, 'HelmProfile', data)[0], valid, key)
         artifact = generated_schema(self.profile_schema)
-        pattern = SchemaView(str(self.profile_schema)).get_class('HelmProfile').annotations['margo_extensions_pattern'].value
+        pattern = SchemaView(str(self.profile_schema)).get_class('WorkloadTargetProfile').annotations['margo_extensions_pattern'].value
         self.assertEqual(artifact['patternProperties'][pattern], {'type': 'object'})
         self.assertIn('allOf', artifact['properties']['characteristics'])
         self.assertEqual(artifact['properties']['characteristics']['x-margo-unique-by'], 'key')

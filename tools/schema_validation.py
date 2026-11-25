@@ -363,6 +363,16 @@ def generated_schema(schema_path, target=None):
             for slot in slots:
                 required = annotation(slot, "margo_required_characteristics")
                 unique = annotation(slot, "margo_unique_by")
+                if unique is None:
+                    for parent in view.class_ancestors(name):
+                        if parent == name:
+                            continue
+                        inherited = next((s for s in view.class_induced_slots(parent)
+                                          if s.name == slot.name), None)
+                        if inherited is not None:
+                            unique = annotation(inherited, "margo_unique_by")
+                            if unique is not None:
+                                break
                 equal = annotation(slot, "margo_equal_to")
                 encoding = annotation(slot, "margo_oci_tag_encoding")
                 nonnull = annotation(slot, "margo_disallow_null")

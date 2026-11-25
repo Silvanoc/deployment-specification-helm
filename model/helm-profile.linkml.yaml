@@ -15,18 +15,13 @@ default_prefix: margo
 classes:
   HelmProfile:
     description: Profile containing characteristics of a Helm workload target.
+    is_a: WorkloadTargetProfile
     tree_root: true
-    annotations:
-      margo_extensions_pattern: '^x-[a-z][a-z0-9-]*-extensions(?![\s\S])'
-    attributes:
+    slot_usage:
       characteristics:
-        multivalued: true
-        inlined: true
-        inlined_as_list: true
-        required: true
         annotations:
-          margo_unique_by: key
           margo_required_characteristics: '["margo.org/deployment/helm", "margo.org/resource/cpu", "margo.org/resource/memory", "margo.org/resource/storage", "margo.org/peripherals", "margo.org/interfaces"]'
+        # slot_usage replaces the inherited union, so repeat its generic ranges.
         any_of:
           - range: HelmDeploymentCharacteristic
           - range: CpuCharacteristic
