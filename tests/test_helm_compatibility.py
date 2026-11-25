@@ -142,6 +142,12 @@ class HelmMetadataTests(unittest.TestCase):
                 for term in shared_terms:
                     self.assertIn(term, slot.description)
         profile = SchemaView(str(ROOT / 'model/helm-profile.linkml.yaml'))
+        deployment = profile.get_class('HelmDeploymentCharacteristic')
+        self.assertNotIn('margo_profile_label', deployment.annotations)
+        self.assertNotIn('margo_profile_note', deployment.annotations)
+        properties = profile.get_class(profile.induced_slot('properties', deployment.name).range)
+        self.assertEqual(properties.title, 'Helm Deployment Technology')
+        self.assertEqual(properties.description, 'The properties for the Helm deployment technology will be defined after we have finished splitting the core and deployment technology specifications.')
         required = [profile.induced_slot('key', expression.slot_conditions['characteristics'].has_member.range).equals_string
                     for expression in profile.get_class('HelmProfile').all_of]
         displayed = []

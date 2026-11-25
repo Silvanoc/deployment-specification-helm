@@ -66,8 +66,6 @@ classes:
       margo_profile_kind: deployment
       margo_profile_characteristic: HelmDeploymentCharacteristic
       margo_profile_example: profile/HelmDeploymentCharacteristic-001.json
-      margo_profile_label: Helm Deployment Technology
-      margo_profile_note: The properties for the Helm deployment technology will be defined after we have finished splitting the core and deployment technology specifications.
     attributes:
       key:
         range: string
@@ -78,6 +76,7 @@ classes:
         inlined: true
         required: true
   HelmDeploymentProperties:
-    description: Helm deployment properties will be defined in the deployment technology specifications.
+    title: Helm Deployment Technology
+    description: The properties for the Helm deployment technology will be defined after we have finished splitting the core and deployment technology specifications.
     extra_slots:
       allowed: true

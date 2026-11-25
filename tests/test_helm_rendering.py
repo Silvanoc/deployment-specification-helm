@@ -8,6 +8,7 @@ from urllib.request import urlopen
 from linkml_runtime.utils.schemaview import SchemaView
 
 from jinja2 import Environment, TemplateError, nodes
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -136,6 +137,44 @@ class HelmRenderingTests(unittest.TestCase):
         self.assertLess(page.index("### Storage"), page.index("### Processor"))
         self.assertIn("Changed core description,", page)
         self.assertIn("Changed peripheral description.", page)
+
+    def test_deployment_properties_range_drives_rendering(self):
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        schema = yaml.safe_load(model.read_text())
+        schema['classes']['AlternateProperties'] = {'title': 'Alternate Label', 'description': 'Alternate note.'}
+        schema['classes']['HelmDeploymentCharacteristic']['attributes']['properties']['range'] = 'AlternateProperties'
+        model.write_text(yaml.safe_dump(schema, sort_keys=False))
+        generate.validate_profile_metadata(model)
+        page = self.render('profile')
+        self.assertIn('### Alternate Label Properties Attributes', page)
+        self.assertIn('> **Note:** Alternate note.', page)
+        self.assertIn('### Alternate Label Example', page)
+
+    def test_invalid_deployment_properties_metadata_fails_closed(self):
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        original = yaml.safe_load(model.read_text())
+        for case in ('missing_slot', 'missing_range', 'multivalued', 'nonclass_range', 'missing_title', 'missing_description', 'blank_title'):
+            with self.subTest(case=case):
+                schema = yaml.safe_load(yaml.safe_dump(original))
+                attrs = schema['classes']['HelmDeploymentCharacteristic']['attributes']
+                props = schema['classes']['HelmDeploymentProperties']
+                if case == 'missing_slot':
+                    del attrs['properties']
+                elif case == 'missing_range':
+                    del attrs['properties']['range']
+                elif case == 'multivalued':
+                    attrs['properties']['multivalued'] = True
+                elif case == 'nonclass_range':
+                    attrs['properties']['range'] = 'string'
+                elif case == 'missing_title':
+                    del props['title']
+                elif case == 'missing_description':
+                    del props['description']
+                else:
+                    props['title'] = '   '
+                model.write_text(yaml.safe_dump(schema, sort_keys=False))
+                with self.assertRaises(ValueError):
+                    generate.validate_profile_metadata(model)
 
     def test_standard_jinja_include_and_undefined_context(self):
         source = self.root / "content/application.md"
