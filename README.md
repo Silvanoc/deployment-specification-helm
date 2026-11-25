@@ -62,10 +62,9 @@ An optional [`justfile`](./justfile) provides shortcuts for these commands.
 Generated pages are written to `build/site/specification/` and checked against
 the corresponding source pages; generated JSON Schemas are in
 `build/artifacts/json-schemas/`. The `build/` directory contains disposable
-generated output. The Markdown sources in `content/` use Jinja templates in
-`tools/templates/` to render model structures. The profile template iterates
-over the model's characteristic classes, and the JSON and YAML examples are
-inserted from validated fixture files.
+generated output. The application prose is authored in `content/`; the profile
+template in `tools/templates/` renders the model's characteristic classes.
+JSON and YAML examples are inserted from validated fixture files.
 
 Fixtures are discovered under `model/examples/<model>/valid/` and
 `model/examples/<model>/invalid/`. Name each file `<ClassName>-<name>.yaml`

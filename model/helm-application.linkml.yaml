@@ -31,24 +31,11 @@ classes:
     extra_slots:
       allowed: false
     slot_usage:
-      name:
-        annotations:
-          margo_helm_description: "The `component.name` property MUST be used as the chart name when installing Helm charts."
       properties:
         range: HelmComponentProperties
   HelmComponentProperties:
     is_a: OCIComponentProperties
-    slot_usage:
-      wait:
-        annotations:
-          margo_helm_description: "The `component.properties.wait` indicates the workload target MUST wait until the component is deployed before moving to the next component."
-        description: "Whether to wait until the Helm release is deployed before proceeding. Default is true. Only applies when multiple components are provided."
   HelmParameterTarget:
     is_a: ParameterTarget
     extra_slots:
       allowed: false
-    slot_usage:
-      pointer:
-        annotations:
-          margo_helm_description: "The `parameter.targets[].pointer` MUST use the dot notation for matching elements in the Helm chart's `values.yaml` file. This follows the same naming convention used with the --set command-line argument with the Helm install command."
-        description: "The name of the parameter in the Helm chart's `values.yaml` file, using the dot notation of the `--set` command line argument."

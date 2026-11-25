@@ -59,17 +59,21 @@ class HelmRenderingTests(unittest.TestCase):
         for path in expected:
             self.assertEqual((source / path).read_bytes(), (output / path).read_bytes())
 
-    def test_model_and_fixture_changes_are_rendered(self):
+    def test_authored_prose_and_fixture_changes_are_rendered(self):
         model = self.root / "model/helm-application.linkml.yaml"
-        text = model.read_text()
+        schema = yaml.safe_load(model.read_text())
+        schema['classes']['HelmComponent']['slot_usage']['name'] = {'description': 'Changed model description.'}
+        model.write_text(yaml.safe_dump(schema, sort_keys=False))
+        source = self.root / 'content/application.md'
         old = "The `component.name` property MUST be used as the chart name when installing Helm charts."
-        annotation = 'margo_helm_description: "' + old + '"'
-        self.assertIn(annotation, text)
-        model.write_text(text.replace(annotation, 'margo_helm_description: "Changed model description."'))
+        self.assertIn(old, source.read_text())
+        self.assertIn(old, self.render('application'))
+        self.assertNotIn('Changed model description.', self.render('application'))
+        source.write_text(source.read_text().replace(old, 'Changed authored description.'))
         fixture = self.root / "model/examples/application/valid/ApplicationDescription-001.yaml"
         fixture.write_text(fixture.read_text() + "# changed fixture\n")
         rendered = self.render("application")
-        self.assertIn("- Changed model description.", rendered)
+        self.assertIn("- Changed authored description.", rendered)
         self.assertIn("# changed fixture\n```", rendered)
 
     def test_templates_are_model_driven(self):
@@ -226,16 +230,30 @@ class HelmRenderingTests(unittest.TestCase):
     def test_bad_model_references_fail_closed(self):
         source = self.root / "content/application.md"
         original = source.read_text()
-        for extra in ("{{ schemaview.induced_slot('wait', 'HelmComponentProperties').annotations['margo_helm_description'].value }}",
+        valid = "{{ schemaview.induced_slot('wait', 'HelmComponentProperties').description }}"
+        source.write_text(original + "\n" + valid)
+        self.assertIn('Whether to wait', self.render('application'))
+        for extra in (valid + "\n" + valid,
                       "{{ schemaview.induced_slot('missing', 'HelmComponentProperties').description }}",
                       "{{ schemaview.induced_slot('wait', 'MissingClass').description }}"):
             with self.subTest(reference=extra):
                 source.write_text(original + "\n" + extra)
                 with self.assertRaises(ValueError):
                     self.render("application")
-        source.write_text(original.replace("schemaview.induced_slot", "missing_model.induced_slot"))
+        source.write_text(original + "\n{{ missing_model.induced_slot('wait', 'HelmComponentProperties') }}")
         with self.assertRaises(TemplateError):
             self.render("application")
+
+    def test_application_prose_requires_no_model_reference(self):
+        source = (self.root / 'content/application.md').read_text()
+        self.assertNotIn('schemaview.', source)
+        self.assertNotIn('margo_helm_description', (self.root / 'model/helm-application.linkml.yaml').read_text())
+        page = self.render('application')
+        expected = (ROOT / 'specification/applications/application-description.md').read_text()
+        for line in expected.splitlines():
+            if line.startswith('- The `'):
+                self.assertIn(line, source)
+                self.assertIn(line, page)
 
     def test_unsafe_template_paths_and_fences_rejected(self):
         source = self.root / "content/application.md"

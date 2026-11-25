@@ -119,8 +119,8 @@ def index_template(name, root, view, generator):
         def render(self, **context):
             context["schemaview"] = ModelView()
             result = template.render(**context)
-            if not seen_models or not seen_examples or (name == "profile" and groups != {"deployment", "characteristic"}):
-                raise ValueError(f"Missing model or example references in {name}")
+            if not seen_examples or (name == "profile" and groups != {"deployment", "characteristic"}):
+                raise ValueError(f"Missing example references or profile groups in {name}")
             check_fences(result)
             return result
 

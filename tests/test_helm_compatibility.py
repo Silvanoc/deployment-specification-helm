@@ -130,17 +130,18 @@ class ApplicationEngineIntegrationTests(unittest.TestCase):
 class HelmMetadataTests(unittest.TestCase):
     def test_helm_descriptions_and_display_metadata(self):
         view = SchemaView(str(MODEL))
-        cases = (
-            ('HelmComponent', 'name', 'The `component.name` property MUST be used as the chart name when installing Helm charts.', ()),
-            ('HelmComponentProperties', 'wait', 'The `component.properties.wait` indicates the workload target MUST wait until the component is deployed before moving to the next component.', ('Helm release',)),
-            ('HelmParameterTarget', 'pointer', "The `parameter.targets[].pointer` MUST use the dot notation for matching elements in the Helm chart's `values.yaml` file. This follows the same naming convention used with the --set command-line argument with the Helm install command.", ('Helm',)),
-        )
-        for cls, field, bullet, shared_terms in cases:
+        self.assertEqual(view.induced_slot('properties', 'HelmComponent').range, 'HelmComponentProperties')
+        for cls, parent, field in (('HelmComponent', 'Component', 'name'),
+                                   ('HelmComponentProperties', 'OCIComponentProperties', 'wait'),
+                                   ('HelmParameterTarget', 'ParameterTarget', 'pointer')):
             with self.subTest(cls=cls, field=field):
                 slot = view.induced_slot(field, cls)
-                self.assertEqual(slot.annotations['margo_helm_description'].value, bullet)
-                for term in shared_terms:
-                    self.assertIn(term, slot.description)
+                base = view.induced_slot(field, parent)
+                self.assertEqual((slot.range, slot.required, slot.pattern), (base.range, base.required, base.pattern))
+                self.assertEqual(slot.description, base.description)
+                self.assertNotIn('margo_helm_description', slot.annotations)
+        self.assertEqual(view.induced_slot('wait', 'HelmComponentProperties').annotations['margo_disallow_null'].value, 'true')
+        self.assertFalse(view.get_class('HelmParameterTarget').extra_slots.allowed)
         profile = SchemaView(str(ROOT / 'model/helm-profile.linkml.yaml'))
         deployment = profile.get_class('HelmDeploymentCharacteristic')
         self.assertNotIn('margo_profile_label', deployment.annotations)
