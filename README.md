@@ -84,7 +84,8 @@ fields may be omitted, but an explicitly supplied `null` is rejected.
 Use this repository's `tools/generate.py` and `tools/validate.py` (or `just
 check`) for key-based subtype dispatch: bare LinkML JSON Schema generation can
 accept a permissive base branch without enforcing known deployment-key
-constraints. Generated JSON Schema enforces structural constraints; the
+constraints. Native class-level `has_member` required-characteristic constraints
+also require this project's generator workaround. Generated JSON Schema enforces structural constraints; the
 validation tool additionally enforces `x-margo-*` semantic checks.
 Structural validation does not replace the normative prose or verify Helm
 chart contents, Kubernetes deployment behavior or registry availability.

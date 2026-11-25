@@ -148,10 +148,14 @@ class SchemaValidationTests(unittest.TestCase):
 
     def test_required_characteristics_and_unique_keys(self):
         self.assertEqual(self.validate(self.profile_schema, 'HelmProfile', self.profile)[0], [])
+        validator = precise_validator(generated_schema(self.profile_schema))
+        self.assertTrue(validator.is_valid(self.profile))
+        self.assertEqual(len(self.profile['characteristics']), 6)
         for i in range(len(self.profile['characteristics'])):
             data = copy.deepcopy(self.profile)
             data['characteristics'].pop(i)
             self.assertTrue(self.validate(self.profile_schema, 'HelmProfile', data)[0], i)
+            self.assertFalse(validator.is_valid(data), i)
         data = copy.deepcopy(self.profile)
         data['characteristics'].extend([{'key': 'vendor.example/unknown', 'properties': {}}, {'key': 'vendor.example/unknown', 'properties': {'different': 1}}])
         self.assertTrue(any('duplicate key' in e for e in self.validate(self.profile_schema, 'HelmProfile', data)[0]))

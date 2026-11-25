@@ -17,10 +17,33 @@ classes:
     description: Profile containing characteristics of a Helm workload target.
     is_a: WorkloadTargetProfile
     tree_root: true
+    all_of:
+      - slot_conditions:
+          characteristics:
+            has_member:
+              range: HelmDeploymentCharacteristic
+      - slot_conditions:
+          characteristics:
+            has_member:
+              range: CpuCharacteristic
+      - slot_conditions:
+          characteristics:
+            has_member:
+              range: MemoryCharacteristic
+      - slot_conditions:
+          characteristics:
+            has_member:
+              range: StorageCharacteristic
+      - slot_conditions:
+          characteristics:
+            has_member:
+              range: PeripheralsCharacteristic
+      - slot_conditions:
+          characteristics:
+            has_member:
+              range: InterfacesCharacteristic
     slot_usage:
       characteristics:
-        annotations:
-          margo_required_characteristics: '["margo.org/deployment/helm", "margo.org/resource/cpu", "margo.org/resource/memory", "margo.org/resource/storage", "margo.org/peripherals", "margo.org/interfaces"]'
         # slot_usage replaces the inherited union, so repeat its generic ranges.
         any_of:
           - range: HelmDeploymentCharacteristic

@@ -21,6 +21,7 @@ from linkml.validator import Validator
 from linkml.validator.plugins import JsonschemaValidationPlugin
 from linkml.validator.report import Severity
 from linkml_runtime.utils.schemaview import SchemaView
+from linkml_runtime.dumpers import json_dumper
 from common import parse_data, semantic_equal
 
 
@@ -207,6 +208,72 @@ def annotation(obj, name):
     return None if entry is None else entry.value
 
 
+def required_memberships(view, name, definitions):
+    """Translate only unconditional conjunctive class membership expressions."""
+    metadata = {'description', 'title', 'comments', 'annotations', 'notes', 'todos',
+                'examples', 'see_also', 'in_subset', 'source', 'from_schema', 'rank'}
+    def contains_member(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key in metadata:
+                    continue
+                if key == 'has_member':
+                    return True
+                # These dictionaries are indexed by user-defined slot names,
+                # which can themselves be named "has_member".
+                if key in ('attributes', 'slot_usage', 'slot_conditions') and isinstance(child, dict):
+                    if any(contains_member(slot) for slot in child.values()):
+                        return True
+                elif contains_member(child):
+                    return True
+            return False
+        if isinstance(value, list):
+            return any(contains_member(v) for v in value)
+        return False
+
+    found = []
+    slots = {slot.name: slot for slot in view.class_induced_slots(name)}
+    for ancestor in view.class_ancestors(name):
+        cls = json_dumper.to_dict(view.get_class(ancestor))
+        expressions = cls.pop('all_of', [])
+        # Slot-level has_member is handled by LinkML's own generator, provided
+        # it really emits contains; verify that separately on generated slots.
+        for section in ('attributes', 'slot_usage'):
+            for slot in cls.get(section, {}).values():
+                if isinstance(slot, dict) and 'has_member' in slot:
+                    member = slot.pop('has_member')
+                    if contains_member(member):
+                        raise ValueError(f"Unsupported nested slot has_member on {ancestor}")
+        if contains_member(cls):
+            raise ValueError(f"Unsupported has_member outside class all_of on {ancestor}")
+        for expression in expressions:
+            if not contains_member(expression):
+                continue
+            conditions = expression.get('slot_conditions') if isinstance(expression, dict) else None
+            if set(expression) - metadata != {'slot_conditions'} or not isinstance(conditions, dict) or len(conditions) != 1:
+                raise ValueError(f"Unsupported has_member expression on {ancestor}")
+            slot_name, condition = next(iter(conditions.items()))
+            if not isinstance(condition, dict) or set(condition) - metadata != {'name', 'has_member'} or condition['name'] != slot_name:
+                raise ValueError(f"Unsupported has_member slot condition on {ancestor}.{slot_name}")
+            member = condition['has_member']
+            if not isinstance(member, dict) or set(member) - metadata != {'range'} or not isinstance(member['range'], str):
+                raise ValueError(f"Unsupported has_member range on {ancestor}.{slot_name}")
+            member_class = member['range']
+            if not view.get_class(member_class):
+                raise ValueError(f"Missing has_member class definition: {member_class}")
+            descendants = view.class_descendants(member_class)
+            missing = [child for child in descendants if child not in definitions]
+            if missing:
+                raise ValueError(f"Missing has_member class definition: {', '.join(missing)}")
+            slot = slots.get(slot_name)
+            if not slot or not slot.multivalued or not slot.inlined_as_list:
+                raise ValueError(f"Unsupported has_member slot cardinality: {name}.{slot_name}")
+            pair = (slot_name, member_class)
+            if pair not in found:
+                found.append(pair)
+    return found
+
+
 def root_class(view):
     roots = [c.name for c in view.all_classes(imports=False).values() if c.tree_root]
     if not roots:
@@ -296,6 +363,7 @@ def generated_schema(schema_path, target=None):
         if len(patterns) > 1:
             raise ValueError(f"Conflicting extension patterns for {name}")
         slots = view.class_induced_slots(name)
+        memberships = required_memberships(view, name, defs)
         extra = next((view.get_class(parent).extra_slots for parent in view.class_ancestors(name)
                       if view.get_class(parent).extra_slots is not None), None)
         typed = annotation(cls, "margo_typed_options")
@@ -325,6 +393,29 @@ def generated_schema(schema_path, target=None):
             props = node.get("properties", {})
             if not isinstance(props, dict):
                 raise ValueError(f"Generated schema has no properties for {name}")
+            for slot_name, member_class in memberships:
+                prop = props.get(slot_name)
+                if not isinstance(prop, dict) or not isinstance(prop.get('items'), dict):
+                    raise ValueError(f"Missing generated array property for has_member: {name}.{slot_name}")
+                array_type = prop.get('type')
+                if array_type == ['array', 'null'] or array_type == ['null', 'array']:
+                    # A required member makes null impossible even for an
+                    # otherwise optional nullable slot.
+                    prop['type'] = 'array'
+                elif array_type != 'array':
+                    raise ValueError(f"Missing generated array property for has_member: {name}.{slot_name}")
+                required = node.setdefault('required', [])
+                if slot_name not in required:
+                    required.append(slot_name)
+                refs = [{'$ref': f'#/$defs/{child}'} for child in view.class_descendants(member_class)]
+                member_schema = refs[0] if len(refs) == 1 else {'anyOf': refs}
+                member_slots = {s.name: s for s in view.class_induced_slots(member_class)}
+                key_slot = member_slots.get('key')
+                if key_slot and key_slot.equals_string is not None:
+                    member_schema = {'allOf': [member_schema, {'properties': {'key': {'const': key_slot.equals_string}}, 'required': ['key']}]}
+                clause = {'contains': member_schema}
+                if clause not in prop.setdefault('allOf', []):
+                    prop['allOf'].append(clause)
             if selector is not None:
                 if not {"operator", "property", "values"} <= set(props):
                     raise ValueError(f"Missing selector properties for {name}")
@@ -361,7 +452,12 @@ def generated_schema(schema_path, target=None):
                 else:
                     node["additionalProperties"] = bool(extra.allowed)
             for slot in slots:
-                required = annotation(slot, "margo_required_characteristics")
+                if slot.has_member is not None:
+                    direct = props.get(slot.name)
+                    member = json_dumper.to_dict(slot.has_member)
+                    if ('range' in member or not slot.multivalued or not isinstance(direct, dict)
+                            or 'contains' not in direct):
+                        raise ValueError(f"Unsupported generated slot has_member: {name}.{slot.name}")
                 unique = annotation(slot, "margo_unique_by")
                 if unique is None:
                     for parent in view.class_ancestors(name):
@@ -377,7 +473,7 @@ def generated_schema(schema_path, target=None):
                 encoding = annotation(slot, "margo_oci_tag_encoding")
                 nonnull = annotation(slot, "margo_disallow_null")
                 oci = annotation(slot, "margo_oci_repository")
-                if not any(x is not None for x in (required, unique, equal, encoding, nonnull, oci)):
+                if not any(x is not None for x in (unique, equal, encoding, nonnull, oci)):
                     continue
                 if slot.name not in props:
                     raise ValueError(f"Missing generated property {name}.{slot.name}")
@@ -392,11 +488,6 @@ def generated_schema(schema_path, target=None):
                     if prop.get('type') != 'string':
                         raise ValueError(f"Unsupported OCI repository schema shape on {name}.{slot.name}")
                     prop['x-margo-oci-repository'] = True
-                if required is not None:
-                    keys = json.loads(required)
-                    if not isinstance(keys, list) or not keys or not all(isinstance(k, str) for k in keys) or not unique:
-                        raise ValueError(f"Invalid required characteristics metadata on {name}.{slot.name}")
-                    prop.setdefault("allOf", []).extend({"contains": {"type": "object", "properties": {unique: {"const": key}}, "required": [unique]}} for key in keys)
                 if unique is not None:
                     if not isinstance(unique, str) or not unique:
                         raise ValueError(f"Invalid unique-by metadata on {name}.{slot.name}")

@@ -1,5 +1,4 @@
 import io
-import json
 import re
 import sys
 import tempfile
@@ -74,9 +73,11 @@ class SharedImportTests(unittest.TestCase):
         self.assertEqual([x.range for x in slot.any_of], ['HelmDeploymentCharacteristic', 'CpuCharacteristic',
             'MemoryCharacteristic', 'StorageCharacteristic', 'PeripheralsCharacteristic',
             'InterfacesCharacteristic', 'HelmOtherCharacteristic'])
-        self.assertEqual(set(json.loads(slot.annotations['margo_required_characteristics'].value)), {
-            'margo.org/deployment/helm', 'margo.org/resource/cpu', 'margo.org/resource/memory',
-            'margo.org/resource/storage', 'margo.org/peripherals', 'margo.org/interfaces'})
+        expressions = profile.all_of
+        self.assertEqual(len(expressions), 6)
+        self.assertEqual({e.slot_conditions['characteristics'].has_member.range for e in expressions}, {
+            'HelmDeploymentCharacteristic', 'CpuCharacteristic', 'MemoryCharacteristic',
+            'StorageCharacteristic', 'PeripheralsCharacteristic', 'InterfacesCharacteristic'})
         pattern = view.induced_slot('key', 'HelmOtherCharacteristic').pattern
         for key in ('vendor.example/feature', 'margo.org/deployment/compose', 'margo.org/deployment/helm-v2'):
             self.assertIsNotNone(re.search(pattern, key))

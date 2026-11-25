@@ -15,6 +15,7 @@ imports:
   - margo-common:application-description.linkml
   - margo-common:oci-component-properties.linkml
 default_prefix: margo
+
 classes:
   HelmDeploymentProfile:
     is_a: DeploymentProfile

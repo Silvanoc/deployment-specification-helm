@@ -142,7 +142,8 @@ class HelmMetadataTests(unittest.TestCase):
                 for term in shared_terms:
                     self.assertIn(term, slot.description)
         profile = SchemaView(str(ROOT / 'model/helm-profile.linkml.yaml'))
-        required = json.loads(profile.induced_slot('characteristics', 'HelmProfile').annotations['margo_required_characteristics'].value)
+        required = [profile.induced_slot('key', expression.slot_conditions['characteristics'].has_member.range).equals_string
+                    for expression in profile.get_class('HelmProfile').all_of]
         displayed = []
         ranks = set()
         for cls in profile.all_classes().values():
