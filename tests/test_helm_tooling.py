@@ -77,6 +77,44 @@ class FixtureDiscoveryTests(unittest.TestCase):
         self.assertTrue(any(c.args[1] == 'NewCharacteristic' for c in validator.call_args_list))
         self.assertEqual(profile_target({'key': 'vendor.example/new'}, schema), 'NewCharacteristic')
 
+    def test_examples_do_not_require_profile_example_annotations(self):
+        import copy
+        import check_examples
+        import re
+        from unittest.mock import patch
+        from linkml_runtime import SchemaView
+        from linkml_runtime.dumpers import yaml_dumper
+
+        schema = self.root / 'model/helm-profile.linkml.yaml'
+        source_view = SchemaView(str(schema))
+        alias = 'margo-common:workload-target-characteristics.linkml'
+        self.assertIn(alias, source_view.imports_closure())
+        shared_schema = copy.deepcopy(source_view.schema_map[alias])
+        for cls in shared_schema.classes.values():
+            if 'margo_profile_example' in cls.annotations:
+                del cls.annotations['margo_profile_example']
+        shared = self.root / 'model/workload-target-local.yaml'
+        yaml_dumper.dump(shared_schema, to_file=str(shared))
+        strip = lambda text: re.sub(r'^\s*margo_profile_example:.*\n', '', text, flags=re.MULTILINE)
+        schema.write_text(strip(schema.read_text()).replace(
+            alias, str(shared.with_suffix(''))))
+        view = SchemaView(str(schema))
+        view.imports_closure()
+        annotated = [cls for cls in view.all_classes().values() if 'margo_profile_kind' in cls.annotations]
+        self.assertTrue(annotated)
+        self.assertTrue(any(cls.name == 'HelmDeploymentCharacteristic' for cls in annotated))
+        self.assertTrue(any(cls.name == 'Cpu' for cls in annotated))
+        for cls in view.all_classes().values():
+            self.assertNotIn('margo_profile_example', cls.annotations)
+        expected = {(fixture.name, kind == 'invalid')
+                    for kind in ('valid', 'invalid')
+                    for fixture in (self.root / 'model/examples/profile' / kind).iterdir()}
+        with patch.object(check_examples, 'validate', wraps=check_examples.validate) as actual:
+            check_examples.check(self.root)
+        observed = {(call.args[2].name, call.kwargs['negative']) for call in actual.call_args_list
+                    if call.args[2].parent.parent.name == 'profile'}
+        self.assertEqual(observed, expected)
+
     def test_missing_and_wrong_class_fixtures_fail(self):
         valid = self.root / 'model/examples/profile/valid/MemoryCharacteristic-001.json'
         invalid = self.root / 'model/examples/profile/invalid/MemoryCharacteristic-001.json'

@@ -1,7 +1,7 @@
 """Focused checks for the shared application model and Compose overrides."""
 
-import json
 import copy
+import re
 import subprocess
 import sys
 import unittest
@@ -160,8 +160,14 @@ class HelmMetadataTests(unittest.TestCase):
             self.assertNotIn(cls.rank, ranks)
             ranks.add(cls.rank)
             target = cls.annotations['margo_profile_characteristic'].value
-            fixture = ROOT / 'model/examples' / cls.annotations['margo_profile_example'].value.replace('profile/', 'profile/valid/', 1)
             key = profile.induced_slot('key', target).equals_string
-            self.assertEqual(json.loads(fixture.read_text())['key'], key)
+            for kind in ('valid', 'invalid'):
+                directory = ROOT / 'model/examples/profile' / kind
+                fixtures = [p for p in directory.iterdir() if re.fullmatch(
+                    re.escape(target) + r'-[A-Za-z0-9][A-Za-z0-9_-]*\.(?:json|yaml|yml)', p.name)]
+                self.assertTrue(fixtures, f'Missing {kind} fixtures for {target}')
+                if kind == 'valid':
+                    for fixture in fixtures:
+                        self.assertEqual(parse_data(fixture.read_text(), fixture.suffix)['key'], key)
             displayed.append(key)
         self.assertEqual(set(required), set(displayed))
