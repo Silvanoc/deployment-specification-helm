@@ -33,7 +33,7 @@ Key: `margo.org/resource/cpu`
 
 | Field      | Type            | Required?       | Description     |
 |------------|-----------------|-----------------|-----------------|
-| cores | number | Y | Defines how many cores the CPU has available. Specified as decimal units of CPU cores (e.g., 0.5 is half a core). Defined by the workload target owner. |
+| cores | number | Y | Defines how many cores the CPU has available, in decimal units of CPU cores (e.g., 0.5 is half a core). Defined by the workload target owner. |
 | architecture | enum | N | Define the CPU's architecture. Must be `amd64`, `arm64` or `arm` |
 
 #### CPUs Example
@@ -105,7 +105,7 @@ Key: `margo.org/peripherals`
 
 | Field      | Type            | Required?       | Description     |
 |------------|-----------------|-----------------|-----------------|
-| type | enum | Y | The type of peripheral available on the workload target. Must be `gpu`, `display`, `camera`, `microphone`, or `speaker` |
+| type | enum | Y | The type of peripheral available on the workload target. Must be `gpu`, `display`, `camera`, `microphone`, or `speaker`. |
 | manufacturer | string | N | The name of the manufacturer. |
 | model | string | N | The model of the peripheral. |
 

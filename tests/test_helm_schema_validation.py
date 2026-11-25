@@ -33,6 +33,76 @@ class SchemaValidationTests(unittest.TestCase):
     def validate(self, schema, target, data, **kwargs):
         return self.engine.validate(schema, target, data, **kwargs)
 
+    def test_profile_dispatch_and_open_generic_types(self):
+        schema = ROOT / 'model/helm-application.linkml.yaml'
+        app = parse_data((ROOT / 'model/examples/application/valid/ApplicationDescription-001.yaml').read_text(), '.yaml')
+        helm = copy.deepcopy(app['deploymentProfiles'][0])
+        unknown = {'id': 'other', 'key': 'vendor.example/deployment/other',
+                   'newProfileField': 3, 'x_runtime': 1, 'x-vendor-field': 2,
+                   'components': [{'name': 'other', 'x_runtime': True,
+                   'newComponentField': True, 'properties': {'nonOci': {'arbitrary': 1},
+                   'repository': 'oci://BAD host/foo', 'revision': '1.0.0'}}]}
+        compose = copy.deepcopy(unknown)
+        compose['key'] = 'margo.org/deployment/compose'
+        app['deploymentProfiles'] = [unknown, compose, helm, copy.deepcopy(helm)]
+        app['parameters']['idpName']['targets'][0]['vendorTargetField'] = {'custom': True}
+        self.assertEqual(self.validate(schema, 'DeploymentProfile', unknown)[0], [])
+        errors, notes = self.validate(schema, 'ApplicationDescription', app)
+        self.assertEqual(errors, [])
+        self.assertTrue(any('generically only' in n for n in notes))
+        app['deploymentProfiles'][2]['components'][0]['properties']['repository'] = 'oci://BAD host/foo'
+        errors, _ = self.validate(schema, 'ApplicationDescription', app)
+        self.assertTrue(any('valid OCI' in e for e in errors), errors)
+        app['deploymentProfiles'][2] = copy.deepcopy(unknown)
+        app['deploymentProfiles'][2]['key'] = 'margo.org/deployment/helm'
+        self.assertTrue(self.validate(schema, 'ApplicationDescription', app)[0])
+        app['deploymentProfiles'] = [unknown]
+        unknown['x-acme-extensions'] = {}
+        self.assertEqual(self.validate(schema, 'ApplicationDescription', app)[0], [])
+        unknown['x_bad-extensions'] = {}
+        self.assertTrue(self.validate(schema, 'ApplicationDescription', app)[0])
+        del unknown['x_bad-extensions']
+        unknown['x-acme-extensions'] = 'not an object'
+        self.assertTrue(self.validate(schema, 'ApplicationDescription', app)[0])
+
+    def test_bundle_inherits_root_nonnull_and_rejects_duplicate_keys(self):
+        helm = ROOT / 'model/helm-application.linkml.yaml'
+        prefixes = {'margo-common': yaml.safe_load(helm.read_text())['prefixes']['margo-common']}
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            other = directory / 'other.yaml'
+            other.write_text(yaml.safe_dump({'id': 'https://example.org/other', 'name': 'Other',
+                'prefixes': prefixes,
+                'imports': [str(helm.with_suffix(''))],
+                'classes': {'OtherDeploymentProfile': {'is_a': 'DeploymentProfile',
+                    'slot_usage': {'key': {'equals_string': 'example.org/deployment/other'}}}}}))
+            bundle = directory / 'bundle.yaml'
+            bundle.write_text(yaml.safe_dump({'id': 'https://example.org/bundle', 'name': 'Bundle',
+                'prefixes': prefixes,
+                'imports': [str(helm.with_suffix('')), str(other.with_suffix(''))]}))
+            artifact = generated_schema(bundle)
+            app = parse_data((ROOT / 'model/examples/application/valid/ApplicationDescription-001.yaml').read_text(), '.yaml')
+            app['deploymentProfiles'][0]['description'] = None
+            self.assertFalse(precise_validator(artifact).is_valid(app))
+            derived = directory / 'derived.yaml'
+            derived.write_text(yaml.safe_dump({'id': 'https://example.org/derived', 'name': 'Derived',
+                'prefixes': prefixes,
+                'imports': [str(bundle.with_suffix(''))], 'classes': {
+                    'ExtendedApplication': {'is_a': 'ApplicationDescription', 'tree_root': True}}}))
+            derived_schema = generated_schema(derived)
+            self.assertIn('ExtendedApplication', derived_schema['$defs'])
+            self.assertFalse(precise_validator(derived_schema).is_valid(app))
+            app['deploymentProfiles'][0]['description'] = 'valid description'
+            app['deploymentProfiles'][0]['components'][0]['properties'] = {'custom': 'invalid for Helm'}
+            self.assertFalse(precise_validator(derived_schema).is_valid(app))
+            other.write_text(other.read_text().replace('example.org/deployment/other', 'margo.org/deployment/helm'))
+            with self.assertRaisesRegex(ValueError, 'Duplicate deployment profile key'):
+                generated_schema(bundle)
+
+    def test_inherited_open_characteristic(self):
+        value = {'key': 'vendor.example/feature', 'properties': {}, 'vendorField': True}
+        self.assertEqual(self.validate(self.profile_schema, 'HelmOtherCharacteristic', value)[0], [])
+
     def test_json_exponents_preserve_yaml_semantics(self):
         for number in ('1e1', '-1E+2', '1e-2', '-0.12345678901234567890123456789e-12', '1e9999'):
             with self.subTest(number=number):
@@ -224,15 +294,15 @@ class SchemaValidationTests(unittest.TestCase):
         for uri in valid + invalid:
             with self.subTest(uri=uri):
                 data = {'repository': uri, 'revision': '1.0.0'}
-                self.assertEqual(not self.validate(schema, 'ComponentProperties', data)[0], uri in valid)
+                self.assertEqual(not self.validate(schema, 'HelmComponentProperties', data)[0], uri in valid)
         fixture = ROOT / 'model/examples/application/valid/ApplicationDescription-001.yaml'
         app = parse_data(fixture.read_text(), '.yaml')
         self.assertFalse(self.validate(schema, 'ApplicationDescription', app)[0])
         app['deploymentProfiles'][0]['components'][0]['properties']['repository'] = 'oci://registry.example/repo:tag'
         self.assertTrue(any('OCI repository URI' in e for e in self.validate(schema, 'ApplicationDescription', app)[0]))
-        artifact = generated_schema(schema, 'ComponentProperties')
+        artifact = generated_schema(schema, 'HelmComponentProperties')
         self.assertTrue(artifact['properties']['repository']['x-margo-oci-repository'])
-        self.assertTrue(artifact['$defs']['ComponentProperties']['properties']['repository']['x-margo-oci-repository'])
+        self.assertTrue(artifact['$defs']['HelmComponentProperties']['properties']['repository']['x-margo-oci-repository'])
 
     def test_select_options_follow_declared_scalar_type(self):
         schema = ROOT / 'model/helm-application.linkml.yaml'

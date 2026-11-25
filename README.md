@@ -27,14 +27,25 @@ shared specification as a reference, with Helm-specific rules applied here.
 See [Compatibility issues and inconsistencies](./COMPATIBILITY-ISSUES.md) for
 the differences and remaining questions.
 
-Common Application Description definitions are imported from the core
-specification's `application-description.linkml.yaml` via the raw GitHub URL
-on the `externalize-component-specs` branch. Generation and validation require
-that URL to be reachable. The import follows a moving branch and
-is therefore not version-pinned. Generation and validation fetch the remote
-schema independently, and it can change between checks. Numeric-source
+Common definitions are imported from the core specification's
+`application-description.linkml.yaml`, optional OCI component properties from
+`oci-component-properties.linkml.yaml`, and workload-target characteristics
+from `workload-target-characteristics.linkml.yaml`, via raw GitHub URLs on the
+`externalize-component-specs` branch. Generation and validation require those
+URLs to be reachable. The imports follow a moving branch and are therefore not
+version-pinned. Generation and validation fetch the remote schemas
+independently, and they can change between checks. Numeric-source
 verification therefore cannot guarantee consistency with the schema consumed
 by LinkML until the dependency is immutable or snapshotted.
+
+Helm-specific constraints apply to profiles with the Helm deployment key.
+Other keys are checked against the shared model only and reported as
+generic-only unless their specializations are loaded.
+To register a loaded component/deployment type, subclass `DeploymentProfile`
+and set a unique `slot_usage.key.equals_string`; unknown keys remain generic-only.
+Bundle root schemas must declare `margo-common` as
+`https://raw.githubusercontent.com/Silvanoc/margo-specification/externalize-component-specs/model/`;
+otherwise LinkML import resolution can fail with `Unknown CURIE prefix: margo-common`.
 
 With [uv](https://docs.astral.sh/uv/) installed, validate the examples and
 generate and check the Markdown and JSON Schemas with:
@@ -70,6 +81,11 @@ The validation script preserves parsed empty objects and numeric values and
 checks additional rules carried in `x-margo-*` metadata. Ordinary JSON Schema
 validators may ignore that metadata. Optional typed Application Description
 fields may be omitted, but an explicitly supplied `null` is rejected.
+Use this repository's `tools/generate.py` and `tools/validate.py` (or `just
+check`) for key-based subtype dispatch: bare LinkML JSON Schema generation can
+accept a permissive base branch without enforcing known deployment-key
+constraints. Generated JSON Schema enforces structural constraints; the
+validation tool additionally enforces `x-margo-*` semantic checks.
 Structural validation does not replace the normative prose or verify Helm
 chart contents, Kubernetes deployment behavior or registry availability.
 

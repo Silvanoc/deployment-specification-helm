@@ -209,6 +209,8 @@ def annotation(obj, name):
 
 def root_class(view):
     roots = [c.name for c in view.all_classes(imports=False).values() if c.tree_root]
+    if not roots:
+        roots = [c.name for c in view.all_classes().values() if c.tree_root]
     if len(roots) != 1:
         raise ValueError(f"Expected exactly one tree_root, got {roots}")
     return roots[0]
@@ -256,6 +258,22 @@ def generated_schema(schema_path, target=None):
     if view.get_class(target) is None:
         raise ValueError(f"Unknown target class: {target}")
     nonnull = annotation(view.schema, 'margo_optional_typed_nonnull')
+    if nonnull is None:
+        seen = set()
+        for name in view.class_ancestors(target):
+            owner_id = view.get_class(name).from_schema
+            if owner_id in seen:
+                continue
+            seen.add(owner_id)
+            owners = [s for s in view.schema_map.values() if s.id == owner_id]
+            if not owners:
+                raise ValueError(f"Cannot identify schema defining class {name}")
+            policies = {annotation(s, 'margo_optional_typed_nonnull') for s in owners} - {None}
+            if len(policies) > 1:
+                raise ValueError(f"Conflicting margo_optional_typed_nonnull policies for {owner_id}")
+            if policies:
+                nonnull = next(iter(policies))
+                break
     if nonnull is not None and nonnull not in ('true', 'false'):
         raise ValueError("Invalid margo_optional_typed_nonnull annotation: expected 'true' or 'false'")
     command = ["linkml", "generate", "json-schema", "--top-class", target, "--include-range-class-descendants", "--preserve-names"]
@@ -278,6 +296,8 @@ def generated_schema(schema_path, target=None):
         if len(patterns) > 1:
             raise ValueError(f"Conflicting extension patterns for {name}")
         slots = view.class_induced_slots(name)
+        extra = next((view.get_class(parent).extra_slots for parent in view.class_ancestors(name)
+                      if view.get_class(parent).extra_slots is not None), None)
         typed = annotation(cls, "margo_typed_options")
         if typed is not None:
             typed = json.loads(typed)
@@ -325,13 +345,21 @@ def generated_schema(schema_path, target=None):
                 props.pop("x_placeholder_extensions", None)
                 if "required" in node:
                     node["required"] = [p for p in node["required"] if p != "x_placeholder_extensions"]
-                node["additionalProperties"] = False
-            extra = cls.extra_slots
-            if extra and extra.allowed and extra.range_expression and extra.range_expression.range:
-                range_name = extra.range_expression.range
-                if range_name != "string":
-                    raise ValueError(f"Unsupported extra_slots range: {range_name}")
-                node["additionalProperties"] = {"type": "string"}
+                if extra and extra.allowed:
+                    node["additionalProperties"] = True
+                    node.setdefault('propertyNames', {}).setdefault('allOf', []).append({
+                        'if': {'pattern': r'^x[-_].*[-_]extensions(?![\s\S])'},
+                        'then': {'pattern': pattern}})
+                else:
+                    node["additionalProperties"] = False
+            if extra is not None:
+                if extra.allowed and extra.range_expression and extra.range_expression.range:
+                    range_name = extra.range_expression.range
+                    if range_name != "string":
+                        raise ValueError(f"Unsupported extra_slots range: {range_name}")
+                    node["additionalProperties"] = {"type": "string"}
+                else:
+                    node["additionalProperties"] = bool(extra.allowed)
             for slot in slots:
                 required = annotation(slot, "margo_required_characteristics")
                 unique = annotation(slot, "margo_unique_by")
@@ -371,6 +399,49 @@ def generated_schema(schema_path, target=None):
                     if encoding != "semver_plus_as_underscore":
                         raise ValueError(f"Unsupported OCI tag encoding: {encoding}")
                     prop["x-margo-oci-tag-encoding"] = encoding
+    # Generic profiles and components must not inherit constraints merely
+    # because a specialized descendant happens to match their shape.
+    if 'DeploymentProfile' in defs and 'Component' in defs and 'ComponentProperties' in defs:
+        for node in [defs['DeploymentProfile']] + ([schema] if target == 'DeploymentProfile' else []):
+            item = node['properties']['components']['items']
+            item.pop('anyOf', None)
+            item['$ref'] = '#/$defs/Component'
+        for node in [defs['Component']] + ([schema] if target == 'Component' else []):
+            prop = node['properties']['properties']
+            prop.pop('anyOf', None)
+            prop['$ref'] = '#/$defs/ComponentProperties'
+    if view.get_class('DeploymentProfile') and view.get_class('ApplicationDescription'):
+        registrations = {}
+        for name, cls in view.all_classes().items():
+            if name == 'DeploymentProfile' or 'DeploymentProfile' not in view.class_ancestors(name):
+                continue
+            key = cls.slot_usage.get('key') if cls.slot_usage else None
+            key = key.equals_string if key else None
+            if key is None:
+                continue
+            if key in registrations:
+                raise ValueError(f"Duplicate deployment profile key {key}: {registrations[key]}, {name}")
+            if name not in defs:
+                raise ValueError(f"Generated schema lacks deployment profile definition for {name}")
+            registrations[key] = name
+        for name in view.class_descendants('ApplicationDescription'):
+            if name not in defs:
+                continue
+            slots = {slot.name: slot for slot in view.class_induced_slots(name)}
+            if 'deploymentProfiles' not in slots or slots['deploymentProfiles'].range != 'DeploymentProfile':
+                continue
+            for node in [defs[name]] + ([schema] if target == name else []):
+                try:
+                    item = node['properties']['deploymentProfiles']['items']
+                except KeyError as exc:
+                    raise ValueError(f"Generated schema lacks deploymentProfiles items for {name}") from exc
+                item.clear()
+                item['$ref'] = '#/$defs/DeploymentProfile'
+                item['allOf'] = [
+                    {'if': {'properties': {'key': {'const': key}}, 'required': ['key']},
+                     'then': {'$ref': f'#/$defs/{subtype}'}}
+                    for key, subtype in registrations.items()]
+                item['x-margo-known-deployment-keys'] = list(registrations)
     jsonschema.validators.validator_for(schema).check_schema(schema)
     return schema
 
@@ -435,11 +506,20 @@ def semantic_errors(data, schema, tag=None, revision=None):
             walk(value, schema['$defs'][ref[len('#/$defs/'):]], path)
         for branch in node.get('allOf', []):
             walk(value, branch, path)
+        if 'if' in node:
+            selected = 'then' if validator.evolve(schema=node['if']).is_valid(value) else 'else'
+            if selected in node:
+                walk(value, node[selected], path)
         for keyword in ('anyOf', 'oneOf'):
             for branch in node.get(keyword, []):
                 if validator.evolve(schema=branch).is_valid(value):
                     walk(value, branch, path)
         if isinstance(value, dict):
+            known = node.get('x-margo-known-deployment-keys')
+            if known is not None and isinstance(value.get('key'), str) and value['key'] not in known:
+                note = f"{path}: deployment key {value['key']!r} validated generically only"
+                if note not in notes:
+                    notes.append(note)
             if 'x-margo-selector-rules' in node:
                 check_selector(value, node['x-margo-selector-rules'], path)
             typed = node.get('x-margo-typed-options')
@@ -474,6 +554,16 @@ def semantic_errors(data, schema, tag=None, revision=None):
                             if supplied is not None and supplied != expected:
                                 errors.append(f"{path}.{name}: {label} must be {expected!r}, got {supplied!r}")
                 walk(value[name], prop, f"{path}.{name}")
+            properties = node.get('properties', {})
+            patterns = node.get('patternProperties', {})
+            for name, child in value.items():
+                matched = False
+                for pattern, prop in patterns.items():
+                    if re.search(pattern, name):
+                        matched = True
+                        walk(child, prop, f"{path}.{name}")
+                if name not in properties and not matched and isinstance(node.get('additionalProperties'), dict):
+                    walk(child, node['additionalProperties'], f"{path}.{name}")
         elif isinstance(value, list):
             unique = node.get('x-margo-unique-by')
             if unique:

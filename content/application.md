@@ -6,9 +6,9 @@ The following content supplements the [Application Description](https://docs.mar
 
 The following defines how certain properties in the Application Description file are handled specifically for Helm workloads. Workload target implementation MUST apply these rules when installing Helm workloads.
 
-- {{ schemaview.induced_slot('name', 'Component').annotations['margo_helm_description'].value }}
-- {{ schemaview.induced_slot('wait', 'ComponentProperties').annotations['margo_helm_description'].value }}
-- {{ schemaview.induced_slot('pointer', 'ParameterTarget').annotations['margo_helm_description'].value }}
+- {{ schemaview.induced_slot('name', 'HelmComponent').annotations['margo_helm_description'].value }}
+- {{ schemaview.induced_slot('wait', 'HelmComponentProperties').annotations['margo_helm_description'].value }}
+- {{ schemaview.induced_slot('pointer', 'HelmParameterTarget').annotations['margo_helm_description'].value }}
 
 ## Example Application Description
 

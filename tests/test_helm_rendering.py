@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.request import urlopen
+from linkml_runtime.utils.schemaview import SchemaView
 
 from jinja2 import Environment, TemplateError, nodes
 
@@ -111,21 +113,28 @@ class HelmRenderingTests(unittest.TestCase):
 
     def test_profile_metadata_and_slot_mutations(self):
         model = self.root / "model/helm-profile.linkml.yaml"
-        text = model.read_text()
+        view = SchemaView(str(model))
+        view.imports_closure()
+        shared = next(s for s in view.schema_map.values() if 'Cpu' in s.classes)
+        source = shared.source_file
+        text = urlopen(source).read().decode('utf-8') if source.startswith(('https:', 'http:')) else Path(source).read_text()
         replacements = {
             "title: CPUs\n    rank: 20": "title: Processor\n    rank: 45",
             "equals_string: margo.org/resource/cpu": "equals_string: example/processor",
-            "Defines how many cores the CPU has available.": "Changed core description.",
+            "Defines how many cores the CPU has available,": "Changed core description,",
             "Indicates the peripherals available on the workload target.": "Changed peripheral description.",
         }
         for before, after in replacements.items():
             self.assertIn(before, text)
             text = text.replace(before, after)
-        model.write_text(text)
+        local = self.root / 'shared-profile.yaml'
+        local.write_text(text)
+        imported = next(i for i in view.schema.imports if 'workload-target-characteristics.linkml' in i)
+        model.write_text(model.read_text().replace(imported, str(local.with_suffix(''))))
         page = self.render("profile")
         self.assertIn("### Processor\n\nKey: `example/processor`", page)
         self.assertLess(page.index("### Storage"), page.index("### Processor"))
-        self.assertIn("Changed core description.", page)
+        self.assertIn("Changed core description,", page)
         self.assertIn("Changed peripheral description.", page)
 
     def test_standard_jinja_include_and_undefined_context(self):
@@ -178,8 +187,8 @@ class HelmRenderingTests(unittest.TestCase):
     def test_bad_model_references_fail_closed(self):
         source = self.root / "content/application.md"
         original = source.read_text()
-        for extra in ("{{ schemaview.induced_slot('wait', 'ComponentProperties').annotations['margo_helm_description'].value }}",
-                      "{{ schemaview.induced_slot('missing', 'ComponentProperties').description }}",
+        for extra in ("{{ schemaview.induced_slot('wait', 'HelmComponentProperties').annotations['margo_helm_description'].value }}",
+                      "{{ schemaview.induced_slot('missing', 'HelmComponentProperties').description }}",
                       "{{ schemaview.induced_slot('wait', 'MissingClass').description }}"):
             with self.subTest(reference=extra):
                 source.write_text(original + "\n" + extra)

@@ -27,9 +27,16 @@ class SharedImportTests(unittest.TestCase):
                     'BooleanValidationSchema', 'NumericIntegerValidationSchema',
                     'NumericDoubleValidationSchema', 'SelectValidationSchema'}
         self.assertTrue(expected.issubset(shared.classes))
-        for name in expected:
-            self.assertIs(view.get_class(name), shared.classes[name])
-        self.assertIs(view.get_class('ApplicationDescription'), view.schema.classes['ApplicationDescription'])
+        shared_view = SchemaView(shared.source_file)
+        for name in expected | {'ApplicationDescription'}:
+            self.assertEqual(view.get_class(name).from_schema, shared.id)
+            self.assertEqual(view.get_class(name).description, shared.classes[name].description)
+            def slot_contract(schema_view):
+                return {s.name: (s.range, s.required, s.multivalued, s.inlined, s.inlined_as_list, s.pattern)
+                        for s in schema_view.class_induced_slots(name)}
+            self.assertEqual(slot_contract(view), slot_contract(shared_view))
+        self.assertTrue(shared.classes['ApplicationDescription'].tree_root)
+        self.assertEqual(view.get_class('HelmComponentProperties').is_a, 'OCIComponentProperties')
         self.assertEqual(view.get_uri(view.get_class('DeploymentProfile'), expand=True), 'https://specification.margo.org/DeploymentProfile')
         slots = {slot.name: slot for slot in view.class_induced_slots('Metadata')}
         self.assertTrue(slots['name'].required)
@@ -41,6 +48,14 @@ class SharedImportTests(unittest.TestCase):
         page = render_page('application', root, path)
         self.assertIn('metadata:', page)
         self.assertIn('catalog', page)
+
+    def test_profile_shared_classes(self):
+        root = Path(__file__).resolve().parents[1]
+        view = SchemaView(str(root / 'model/helm-profile.linkml.yaml'))
+        view.imports_closure()
+        shared = next(schema for schema in view.schema_map.values() if 'CpuCharacteristic' in schema.classes)
+        self.assertIs(view.get_class('CpuCharacteristic'), shared.classes['CpuCharacteristic'])
+        self.assertEqual(view.get_class('HelmOtherCharacteristic').is_a, 'OtherCharacteristic')
 
     def test_imported_class_keeps_original_namespace(self):
         root = Path(__file__).resolve().parents[1]

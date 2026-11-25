@@ -58,7 +58,7 @@ class FixtureDiscoveryTests(unittest.TestCase):
 
     def test_new_modeled_class_and_fixtures_discovered(self):
         schema = self.root / 'model/helm-profile.linkml.yaml'
-        text = schema.read_text().replace('  CpuCharacteristic:\n', '''  NewCharacteristic:
+        text = schema.read_text().replace('  HelmDeploymentCharacteristic:\n', '''  NewCharacteristic:
     is_a: HelmDeploymentCharacteristic
     annotations:
       margo_profile_kind: characteristic
@@ -67,7 +67,7 @@ class FixtureDiscoveryTests(unittest.TestCase):
       key:
         equals_string: vendor.example/new
         pattern: '^vendor\\.example/new$'
-  CpuCharacteristic:
+  HelmDeploymentCharacteristic:
 ''')
         schema.write_text(text)
         for kind, body in [('valid', '{"key":"vendor.example/new","properties":{}}'), ('invalid', '{"key":"vendor.example/new"}')]:

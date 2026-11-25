@@ -100,7 +100,7 @@ class ApplicationEngineIntegrationTests(unittest.TestCase):
                                 ("1.2.3_" + "a" * 122, True),
                                 ("1.2.3_" + "a" * 123, False)):
             with self.subTest(revision=revision):
-                errors, _ = self.engine.validate(MODEL, "ComponentProperties", {**base, "revision": revision})
+                errors, _ = self.engine.validate(MODEL, "HelmComponentProperties", {**base, "revision": revision})
                 self.assertEqual(not errors, valid, errors)
 
     def test_absolute_end_patterns_in_engine_and_patched_schema(self):
@@ -131,9 +131,9 @@ class HelmMetadataTests(unittest.TestCase):
     def test_helm_descriptions_and_display_metadata(self):
         view = SchemaView(str(MODEL))
         cases = (
-            ('Component', 'name', 'The `component.name` property MUST be used as the chart name when installing Helm charts.', ('identify the component package', 'chart name')),
-            ('ComponentProperties', 'wait', 'The `component.properties.wait` indicates the workload target MUST wait until the component is deployed before moving to the next component.', ('For Helm:', 'For Compose:', 'running state')),
-            ('ParameterTarget', 'pointer', "The `parameter.targets[].pointer` MUST use the dot notation for matching elements in the Helm chart's `values.yaml` file. This follows the same naming convention used with the --set command-line argument with the Helm install command.", ('For Helm deployments', 'For compose deployments', 'environment variable')),
+            ('HelmComponent', 'name', 'The `component.name` property MUST be used as the chart name when installing Helm charts.', ()),
+            ('HelmComponentProperties', 'wait', 'The `component.properties.wait` indicates the workload target MUST wait until the component is deployed before moving to the next component.', ('Helm release',)),
+            ('HelmParameterTarget', 'pointer', "The `parameter.targets[].pointer` MUST use the dot notation for matching elements in the Helm chart's `values.yaml` file. This follows the same naming convention used with the --set command-line argument with the Helm install command.", ('Helm',)),
         )
         for cls, field, bullet, shared_terms in cases:
             with self.subTest(cls=cls, field=field):
