@@ -192,13 +192,23 @@ class SchemaValidationTests(unittest.TestCase):
         for target in targets:
             path = ROOT / 'model/examples/profile/valid' / f'{target}-001.json'
             fixture = parse_data(path.read_text(), '.json')
-            self.assertEqual(fixture['key'], view.induced_slot('key', target).equals_string)
-            validator = precise_validator(generated_schema(self.profile_schema, target))
-            for suffix in ('', '\n', '\r\n'):
+            slot = view.induced_slot('key', target)
+            self.assertEqual(fixture['key'], slot.equals_string)
+            self.assertIsNone(slot.pattern)
+            artifact = generated_schema(self.profile_schema, target)
+            key_schema = artifact['$defs'][target]['properties']['key']
+            self.assertEqual(key_schema['const'], fixture['key'])
+            self.assertNotIn('pattern', key_schema)
+            validator = precise_validator(artifact)
+            self.assertEqual(check_examples.profile_target(fixture, self.profile_schema), target)
+            for suffix in ('', '-changed', '\n', '\r\n'):
                 with self.subTest(target=target, suffix=repr(suffix)):
                     data = {**fixture, 'key': fixture['key'] + suffix}
                     self.assertEqual(not self.validate(self.profile_schema, target, data)[0], not suffix)
                     self.assertEqual(validator.is_valid(data), not suffix)
+                    if suffix:
+                        with self.assertRaises(ValueError):
+                            check_examples.profile_target(data, self.profile_schema)
 
     def test_profile_extension_key_requires_absolute_end(self):
         validator = precise_validator(generated_schema(self.profile_schema, 'HelmProfile'))

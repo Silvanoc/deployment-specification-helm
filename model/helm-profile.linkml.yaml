@@ -49,7 +49,6 @@ classes:
       key:
         range: string
         required: true
-        pattern: '^margo\.org/deployment/helm(?![\s\S])'
         equals_string: margo.org/deployment/helm
       properties:
         range: HelmDeploymentProperties

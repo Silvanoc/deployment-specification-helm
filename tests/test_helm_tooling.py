@@ -66,7 +66,6 @@ class FixtureDiscoveryTests(unittest.TestCase):
     slot_usage:
       key:
         equals_string: vendor.example/new
-        pattern: '^vendor\\.example/new$'
   HelmDeploymentCharacteristic:
 ''')
         schema.write_text(text)
