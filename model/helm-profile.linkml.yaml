@@ -65,7 +65,6 @@ classes:
     annotations:
       margo_profile_kind: deployment
       margo_profile_characteristic: HelmDeploymentCharacteristic
-      margo_profile_example: profile/HelmDeploymentCharacteristic-001.json
     attributes:
       key:
         range: string

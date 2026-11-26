@@ -17,7 +17,7 @@
 {%- endfor -%}
 {{ '\n' }}
 {%- endif -%}
-{{ ('### ' if group == 'deployment' else '#### ') ~ label ~ ' Example\n\n```json\n' ~ example(cls.annotations['margo_profile_example'].value) ~ '\n```' }}
+{{ ('### ' if group == 'deployment' else '#### ') ~ label ~ ' Example\n\n```json\n' ~ profile_example(characteristic) ~ '\n```' }}
 {%- if not loop.last %}{{ '\n\n' }}{% endif -%}
 {%- endfor -%}
 {%- endmacro -%}

@@ -69,6 +69,9 @@ JSON and YAML examples are inserted from validated fixture files.
 Fixtures are discovered under `model/examples/<model>/valid/` and
 `model/examples/<model>/invalid/`. Name each file `<ClassName>-<name>.yaml`
 or `<ClassName>-<name>.json` so the checker can select its LinkML class.
+For each profile characteristic, documentation uses LinkML's class-based
+discovery in the `valid/` directory and selects the lexicographically first
+matching JSON file; fixtures in `invalid/` are not considered.
 
 To validate another document, select its schema and target class:
 

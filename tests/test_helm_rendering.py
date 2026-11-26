@@ -1,4 +1,5 @@
 import shutil
+import copy
 import sys
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.request import urlopen
 from linkml_runtime.utils.schemaview import SchemaView
+from linkml_runtime.dumpers import yaml_dumper
 
 from jinja2 import Environment, TemplateError, nodes
 import yaml
@@ -24,6 +26,16 @@ class HelmRenderingTests(unittest.TestCase):
             shutil.copytree(ROOT / directory, self.root / directory)
         for name in ("README.md", "COMPATIBILITY-ISSUES.md"):
             shutil.copy2(ROOT / name, self.root / name)
+        model = self.root / "model/helm-profile.linkml.yaml"
+        view = SchemaView(str(model))
+        alias = 'margo-common:workload-target-characteristics.linkml'
+        view.imports_closure()
+        shared = copy.deepcopy(view.schema_map[alias])
+        for cls in shared.classes.values():
+            cls.annotations.pop('margo_profile_example', None)
+        local = self.root / 'model/workload-target-local.yaml'
+        yaml_dumper.dump(shared, to_file=str(local))
+        model.write_text(model.read_text().replace(alias, str(local.with_suffix(''))))
 
     def render(self, name):
         return generate.render_page(name, self.root, self.root / "model" / f"helm-{name}.linkml.yaml")
@@ -97,7 +109,6 @@ class HelmRenderingTests(unittest.TestCase):
     annotations:
       margo_profile_kind: characteristic
       margo_profile_characteristic: Novel
-      margo_profile_example: profile/Novel-001.json
     attributes:
       key:
         range: string
@@ -107,7 +118,7 @@ class HelmRenderingTests(unittest.TestCase):
         description: A novel value.
 """
         model.write_text(text.replace("classes:\n", addition, 1))
-        fixture = self.root / "model/examples/profile/valid/Novel-001.json"
+        fixture = self.root / "model/examples/profile/valid/Novel-custom.json"
         fixture.write_text('{"value": "new"}\n')
         page = self.render("profile")
         self.assertIn("### Novel Display\n\nKey: `example/novel`", page)
@@ -115,6 +126,56 @@ class HelmRenderingTests(unittest.TestCase):
         self.assertLess(page.index("### Novel Display"), page.index("### Memory"))
         self.assertIn("| value | string | N | A novel value. |", page)
         self.assertIn(fixture.read_text(), page)
+
+    def test_profile_discovery_without_example_annotations(self):
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        view = SchemaView(str(model))
+        self.assertTrue(view.get_class('Cpu'))
+        for cls in view.all_classes().values():
+            self.assertNotIn('margo_profile_example', cls.annotations)
+        directory = self.root / 'model/examples/profile/valid'
+        old = directory / 'CpuCharacteristic-001.json'
+        renamed = old.with_name('CpuCharacteristic-z.json')
+        old.rename(renamed)
+        first = old.with_name('CpuCharacteristic-a.json')
+        first.write_text(renamed.read_text().replace('"key":', '"key" :', 1))
+        original = generate.ExampleRunner.example_source_inputs
+        calls = []
+        def spy(runner, cls):
+            calls.append((runner.input_directory, runner.input_formats, cls))
+            return original(runner, cls)
+        with patch.object(generate.ExampleRunner, 'example_source_inputs', spy):
+            page = self.render('profile')
+        self.assertIn((directory, ['json'], 'CpuCharacteristic'), calls)
+        self.assertIn(first.read_text(), page)
+        self.assertNotIn(renamed.read_text(), page)
+        first.unlink()
+        self.assertIn(renamed.read_text(), self.render('profile'))
+        renamed.unlink()
+        with self.assertRaisesRegex(ValueError, 'No valid JSON profile example for CpuCharacteristic'):
+            self.render('profile')
+        first.symlink_to(self.root / 'README.md')
+        with self.assertRaisesRegex(ValueError, 'unsafe example'):
+            self.render('profile')
+
+    def test_profile_discovery_rejects_symlink_before_glob(self):
+        directory = self.root / 'model/examples/profile/valid'
+        moved = directory.with_name('moved')
+        directory.rename(moved)
+        directory.symlink_to(moved, target_is_directory=True)
+        with patch.object(generate.ExampleRunner, 'example_source_inputs') as discovery:
+            with self.assertRaisesRegex(ValueError, 'unsafe profile example directory'):
+                self.render('profile')
+            discovery.assert_not_called()
+
+    def test_profile_discovery_in_workspace_with_glob_metacharacters(self):
+        workspace = self.root / 'repo[1]'
+        workspace.mkdir()
+        for directory in ('model', 'content', 'tools/templates'):
+            shutil.copytree(self.root / directory, workspace / directory)
+        model = workspace / 'model/helm-profile.linkml.yaml'
+        page = generate.render_page('profile', workspace, model)
+        self.assertEqual(page.encode(), (ROOT / 'specification' / generate.PAGES['profile']).read_bytes())
 
     def test_profile_metadata_and_slot_mutations(self):
         model = self.root / "model/helm-profile.linkml.yaml"
@@ -124,7 +185,8 @@ class HelmRenderingTests(unittest.TestCase):
         source = shared.source_file
         text = urlopen(source).read().decode('utf-8') if source.startswith(('https:', 'http:')) else Path(source).read_text()
         replacements = {
-            "title: CPUs\n    rank: 20": "title: Processor\n    rank: 45",
+            "title: CPUs": "title: Processor",
+            "rank: 20": "rank: 45",
             "equals_string: margo.org/resource/cpu": "equals_string: example/processor",
             "Defines how many cores the CPU has available,": "Changed core description,",
             "Indicates the peripherals available on the workload target.": "Changed peripheral description.",
@@ -134,7 +196,7 @@ class HelmRenderingTests(unittest.TestCase):
             text = text.replace(before, after)
         local = self.root / 'shared-profile.yaml'
         local.write_text(text)
-        imported = next(i for i in view.schema.imports if 'workload-target-characteristics.linkml' in i)
+        imported = next(i for i in view.schema.imports if 'workload-target-local' in i)
         model.write_text(model.read_text().replace(imported, str(local.with_suffix(''))))
         page = self.render("profile")
         self.assertIn("### Processor\n\nKey: `example/processor`", page)
