@@ -12,6 +12,10 @@ imports:
   - margo-common:workload-target-characteristics.linkml
 default_prefix: margo
 
+subsets:
+  DeploymentTechnologyCharacteristics:
+    description: Characteristics indicating support for a deployment technology.
+
 classes:
   HelmProfile:
     description: Profile containing characteristics of a Helm workload target.
@@ -62,9 +66,7 @@ classes:
     title: Helm Deployment Technology Support
     description: The following required characteristics indicate that a workload target can deploy Helm workloads.
     rank: 10
-    annotations:
-      margo_profile_kind: deployment
-      margo_profile_characteristic: HelmDeploymentCharacteristic
+    in_subset: [DeploymentTechnologyCharacteristics]
     attributes:
       key:
         range: string

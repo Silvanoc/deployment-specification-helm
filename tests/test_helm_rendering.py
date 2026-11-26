@@ -32,7 +32,8 @@ class HelmRenderingTests(unittest.TestCase):
         view.imports_closure()
         shared = copy.deepcopy(view.schema_map[alias])
         for cls in shared.classes.values():
-            cls.annotations.pop('margo_profile_example', None)
+            for key in ('margo_profile_example', 'margo_profile_kind', 'margo_profile_characteristic'):
+                cls.annotations.pop(key, None)
         local = self.root / 'model/workload-target-local.yaml'
         yaml_dumper.dump(shared, to_file=str(local))
         model.write_text(model.read_text().replace(alias, str(local.with_suffix(''))))
@@ -99,16 +100,15 @@ class HelmRenderingTests(unittest.TestCase):
         profile = (self.root / "content/profile.md").read_text()
         self.assertTrue(list(Environment().parse(profile).find_all(nodes.FromImport)))
 
-    def test_profile_new_annotated_class_is_rendered(self):
+    def test_profile_new_required_class_is_rendered(self):
+        from common import parse_data
+        from schema_validation import generated_schema, precise_validator
         model = self.root / "model/helm-profile.linkml.yaml"
         text = model.read_text()
         addition = """classes:
   Novel:
     title: Novel Display
     rank: 25
-    annotations:
-      margo_profile_kind: characteristic
-      margo_profile_characteristic: Novel
     attributes:
       key:
         range: string
@@ -118,8 +118,18 @@ class HelmRenderingTests(unittest.TestCase):
         description: A novel value.
 """
         model.write_text(text.replace("classes:\n", addition, 1))
+        schema = yaml.safe_load(model.read_text())
+        profile = schema['classes']['HelmProfile']
+        profile['slot_usage']['characteristics']['any_of'].append({'range': 'Novel'})
+        profile['all_of'].append({'slot_conditions': {'characteristics': {'has_member': {'range': 'Novel'}}}})
+        model.write_text(yaml.safe_dump(schema, sort_keys=False))
         fixture = self.root / "model/examples/profile/valid/Novel-custom.json"
-        fixture.write_text('{"value": "new"}\n')
+        fixture.write_text('{"key": "example/novel", "value": "new"}\n')
+        full = parse_data((fixture.parent / 'HelmProfile-001.json').read_text(), '.json')
+        validator = precise_validator(generated_schema(model))
+        self.assertFalse(validator.is_valid(full))
+        full['characteristics'].append(parse_data(fixture.read_text(), '.json'))
+        self.assertTrue(validator.is_valid(full))
         page = self.render("profile")
         self.assertIn("### Novel Display\n\nKey: `example/novel`", page)
         self.assertLess(page.index("### CPUs"), page.index("### Novel Display"))
@@ -127,12 +137,49 @@ class HelmRenderingTests(unittest.TestCase):
         self.assertIn("| value | string | N | A novel value. |", page)
         self.assertIn(fixture.read_text(), page)
 
+    def test_optional_undocumented_characteristic_does_not_break_rendering(self):
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        schema = yaml.safe_load(model.read_text())
+        schema['classes']['OptionalTarget'] = {'attributes': {
+            'key': {'range': 'string', 'equals_string': 'example/optional'}}}
+        schema['classes']['HelmProfile']['slot_usage']['characteristics']['any_of'].append({'range': 'OptionalTarget'})
+        model.write_text(yaml.safe_dump(schema, sort_keys=False))
+        self.assertEqual(self.render('profile').encode(),
+                         (ROOT / 'specification' / generate.PAGES['profile']).read_bytes())
+
+    def test_subclass_fixture_does_not_change_profile_documentation(self):
+        from check_examples import profile_target
+        from common import parse_data
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        schema = yaml.safe_load(model.read_text())
+        schema['classes']['DerivedCpu'] = {'is_a': 'CpuCharacteristic'}
+        model.write_text(yaml.safe_dump(schema, sort_keys=False))
+        directory = self.root / 'model/examples/profile/valid'
+        fixture = directory / 'CpuCharacteristic-001.json'
+        shutil.copy2(fixture, directory / 'DerivedCpu-001.json')
+        self.assertEqual(self.render('profile').encode(),
+                         (ROOT / 'specification' / generate.PAGES['profile']).read_bytes())
+        self.assertEqual(profile_target(parse_data(fixture.read_text(), '.json'), model), 'CpuCharacteristic')
+
+    def test_required_pattern_key_is_rendered(self):
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        schema = yaml.safe_load(model.read_text())
+        schema['classes']['PatternTarget'] = {'title': 'Pattern Target', 'rank': 25, 'attributes': {
+            'key': {'range': 'string', 'pattern': 'vendor/.*'}}}
+        profile = schema['classes']['HelmProfile']
+        profile['slot_usage']['characteristics']['any_of'].append({'range': 'PatternTarget'})
+        profile['all_of'].append({'slot_conditions': {'characteristics': {'has_member': {'range': 'PatternTarget'}}}})
+        model.write_text(yaml.safe_dump(schema, sort_keys=False))
+        (self.root / 'model/examples/profile/valid/PatternTarget-example.json').write_text('{"key":"vendor/one"}\n')
+        self.assertIn('### Pattern Target\n\nKey pattern: `vendor/.*`', self.render('profile'))
+
     def test_profile_discovery_without_example_annotations(self):
         model = self.root / 'model/helm-profile.linkml.yaml'
         view = SchemaView(str(model))
         self.assertTrue(view.get_class('Cpu'))
         for cls in view.all_classes().values():
-            self.assertNotIn('margo_profile_example', cls.annotations)
+            for key in ('margo_profile_example', 'margo_profile_kind', 'margo_profile_characteristic'):
+                self.assertNotIn(key, cls.annotations)
         directory = self.root / 'model/examples/profile/valid'
         old = directory / 'CpuCharacteristic-001.json'
         renamed = old.with_name('CpuCharacteristic-z.json')
@@ -141,7 +188,7 @@ class HelmRenderingTests(unittest.TestCase):
         first.write_text(renamed.read_text().replace('"key":', '"key" :', 1))
         original = generate.ExampleRunner.example_source_inputs
         calls = []
-        def spy(runner, cls):
+        def spy(runner, cls=None):
             calls.append((runner.input_directory, runner.input_formats, cls))
             return original(runner, cls)
         with patch.object(generate.ExampleRunner, 'example_source_inputs', spy):
@@ -215,6 +262,11 @@ class HelmRenderingTests(unittest.TestCase):
         self.assertIn('### Alternate Label Properties Attributes', page)
         self.assertIn('> **Note:** Alternate note.', page)
         self.assertIn('### Alternate Label Example', page)
+
+    def test_validate_profile_metadata_accepts_string_path(self):
+        model = self.root / 'model/helm-profile.linkml.yaml'
+        self.assertEqual(generate.validate_profile_metadata(str(model)),
+                         generate.validate_profile_metadata(model))
 
     def test_invalid_deployment_properties_metadata_fails_closed(self):
         model = self.root / 'model/helm-profile.linkml.yaml'

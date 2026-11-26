@@ -64,6 +64,12 @@ the corresponding source pages; generated JSON Schemas are in
 `build/artifacts/json-schemas/`. The `build/` directory contains disposable
 generated output. The application prose is authored in `content/`; the profile
 template in `tools/templates/` renders the model's characteristic classes.
+It documents only characteristics required by native profile `has_member`
+expressions and discovers display classes through native LinkML slot ranges.
+Optional fixtures are validated independently and do not create sections. To identify
+deployment technology characteristics, profile discovery explicitly checks the
+class and its `is_a` and mixin ancestors for membership in the
+`DeploymentTechnologyCharacteristics` subset.
 JSON and YAML examples are inserted from validated fixture files.
 
 Fixtures are discovered under `model/examples/<model>/valid/` and

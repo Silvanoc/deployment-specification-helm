@@ -1,11 +1,13 @@
 """Check documented examples, valid fixtures, and class-specific counterexamples."""
 import re
 import sys
+from pathlib import Path
 
 from linkml_runtime.utils.schemaview import SchemaView
 
 from common import ROOT, markdown_fences, parse_data, semantic_equal
-from schema_validation import ValidationEngine, annotation, root_class
+from schema_validation import ValidationEngine
+from profile_structure import profile_target as native_profile_target
 
 GROUPS = ("application", "profile")
 DOCUMENTS = (
@@ -15,33 +17,8 @@ DOCUMENTS = (
 
 
 def profile_target(data, schema):
-    if not isinstance(data, dict):
-        raise ValueError("Profile example must be an object")
-    view = SchemaView(str(schema))
-    if "characteristics" in data:
-        return root_class(view)
-    key = data.get("key")
-    if not isinstance(key, str):
-        raise ValueError("Profile characteristic must have a string key")
-    targets = set()
-    for cls in view.all_classes().values():
-        kind = annotation(cls, "margo_profile_kind")
-        if kind is None:
-            continue
-        name = annotation(cls, "margo_profile_characteristic")
-        if kind not in ("deployment", "characteristic") or not name or not view.get_class(name):
-            raise ValueError(f"Invalid profile metadata: {cls.name}")
-        targets.add(name)
-    matches = []
-    for name in sorted(targets):
-        slot = view.induced_slot("key", name)
-        if not slot or not (slot.pattern or slot.equals_string):
-            raise ValueError(f"Missing key metadata for {name}")
-        if (not slot.equals_string or slot.equals_string == key) and (not slot.pattern or re.fullmatch(slot.pattern, key)):
-            matches.append(name)
-    if len(matches) != 1:
-        raise ValueError(f"Profile key {key!r} matches {len(matches)} characteristic classes")
-    return matches[0]
+    schema = Path(schema)
+    return native_profile_target(SchemaView(str(schema)), data)
 
 
 def validate(schema, target, fixture, negative=False, engine=None):

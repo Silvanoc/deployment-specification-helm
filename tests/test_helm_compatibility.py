@@ -165,13 +165,16 @@ class HelmMetadataTests(unittest.TestCase):
                     for expression in profile.get_class('HelmProfile').all_of]
         displayed = []
         ranks = set()
-        for cls in profile.all_classes().values():
-            if 'margo_profile_kind' not in cls.annotations:
-                continue
+        from profile_structure import profile_sections
+        sections = profile_sections(profile)
+        self.assertIn('DeploymentTechnologyCharacteristics', deployment.in_subset)
+        self.assertIsNotNone(profile.get_subset('DeploymentTechnologyCharacteristics'))
+        for section in sections:
+            cls = profile.get_class(section.display)
             self.assertTrue(cls.title and cls.rank is not None)
             self.assertNotIn(cls.rank, ranks)
             ranks.add(cls.rank)
-            target = cls.annotations['margo_profile_characteristic'].value
+            target = section.target
             key = profile.induced_slot('key', target).equals_string
             for kind in ('valid', 'invalid'):
                 directory = ROOT / 'model/examples/profile' / kind
