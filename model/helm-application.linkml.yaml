@@ -35,7 +35,3 @@ classes:
         range: HelmComponentProperties
   HelmComponentProperties:
     is_a: OCIComponentProperties
-  HelmParameterTarget:
-    is_a: ParameterTarget
-    extra_slots:
-      allowed: false

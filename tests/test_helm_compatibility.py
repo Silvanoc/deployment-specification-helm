@@ -85,6 +85,17 @@ class ApplicationEngineIntegrationTests(unittest.TestCase):
         profile["components"][0]["properties"]["timeout"] = "5m0s"
         self.assert_engine_valid(self.application)
 
+    def test_parameter_targets_use_shared_model(self):
+        target = self.application["parameters"]["idpName"]["targets"][0]
+        target["vendorTargetField"] = {"custom": True}
+        self.assert_engine_valid(self.application)
+        for field in ("pointer", "components"):
+            with self.subTest(field=field):
+                application = copy.deepcopy(self.application)
+                del application["parameters"]["idpName"]["targets"][0][field]
+                errors, _ = self.engine.validate(MODEL, "ApplicationDescription", application)
+                self.assertTrue(errors)
+
     def test_select_option_types_in_engine(self):
         for data_type, options in (("string", ["a", "b"]), ("integer", [30, 60]),
                                    ("double", [1.5, 2.5]), ("boolean", [True, False])):
@@ -132,8 +143,7 @@ class HelmMetadataTests(unittest.TestCase):
         view = SchemaView(str(MODEL))
         self.assertEqual(view.induced_slot('properties', 'HelmComponent').range, 'HelmComponentProperties')
         for cls, parent, field in (('HelmComponent', 'Component', 'name'),
-                                   ('HelmComponentProperties', 'OCIComponentProperties', 'wait'),
-                                   ('HelmParameterTarget', 'ParameterTarget', 'pointer')):
+                                   ('HelmComponentProperties', 'OCIComponentProperties', 'wait')):
             with self.subTest(cls=cls, field=field):
                 slot = view.induced_slot(field, cls)
                 base = view.induced_slot(field, parent)
@@ -141,7 +151,9 @@ class HelmMetadataTests(unittest.TestCase):
                 self.assertEqual(slot.description, base.description)
                 self.assertNotIn('margo_helm_description', slot.annotations)
         self.assertEqual(view.induced_slot('wait', 'HelmComponentProperties').annotations['margo_disallow_null'].value, 'true')
-        self.assertFalse(view.get_class('HelmParameterTarget').extra_slots.allowed)
+        self.assertIsNone(view.get_class('HelmParameterTarget'))
+        self.assertEqual(view.induced_slot('targets', 'Parameter').range, 'ParameterTarget')
+        self.assertTrue(view.get_class('ParameterTarget').extra_slots.allowed)
         profile = SchemaView(str(ROOT / 'model/helm-profile.linkml.yaml'))
         deployment = profile.get_class('HelmDeploymentCharacteristic')
         self.assertNotIn('margo_profile_label', deployment.annotations)
